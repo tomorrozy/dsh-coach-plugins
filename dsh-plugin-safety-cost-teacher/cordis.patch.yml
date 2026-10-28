@@ -1,0 +1,11 @@
+# dsh-safety-cost-teacher bundle patch: mounts the plugin into the host
+# composition of a dsh profile. The host half serves one JSON RPC route for the
+# browser half, registers the safety-cost-coach skill and the screview_* sync
+# tools; the browser half registers the left sidebar entry
+# (sidebar.panellist id=safety-cost-teacher) and its global page (main key).
+- insert:
+    - id: dsh-safety-cost-teacher
+      name: 'dsh-safety-cost-teacher'
+      config:
+        # 出题所属工程目录（复盘写入 <workspace>/面试记录/ 与状态里展示）。
+        workspace: '%USERPROFILE%\Desktop\Taurus car'

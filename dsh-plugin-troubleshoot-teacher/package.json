@@ -1,0 +1,57 @@
+{
+  "name": "dsh-troubleshoot-teacher",
+  "version": "0.1.0",
+  "description": "排错方法论老师：DSH 左侧栏入口 + 逐题排错训练台（P01–P16 现象题库），训练“排查顺序 + 每步判据 + 工具 + 异常分支”，并注册 troubleshoot-coach 技能与 tscoach_* 状态同步工具。",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "data",
+    "skill",
+    "locale",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node scripts/selftest.mjs",
+    "test:host": "node scripts/selftest.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-locale"
+      ],
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*"
+  },
+  "peerDependenciesMeta": {
+    "*": {
+      "optional": true
+    }
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "troubleshooting",
+    "embedded",
+    "rc-car"
+  ],
+  "license": "MIT"
+}

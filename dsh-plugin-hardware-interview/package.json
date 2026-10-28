@@ -1,0 +1,53 @@
+{
+  "name": "dsh-hardware-interview-teacher",
+  "version": "0.1.0",
+  "description": "电控硬件面试老师：DSH 左侧栏入口 + 逐题硬件面试台（H01–H20）、工程硬件配置扫描、复盘生成，并注册硬件面试老师 skill 与状态同步工具。",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "data",
+    "skill",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node scripts/selftest.mjs && node scripts/client-selftest.mjs",
+    "test:host": "node scripts/selftest.mjs",
+    "test:client": "node scripts/client-selftest.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-locale"
+      ],
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*"
+  },
+  "peerDependenciesMeta": {
+    "*": {
+      "optional": true
+    }
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "hardware-interview",
+    "robomaster"
+  ],
+  "license": "MIT"
+}

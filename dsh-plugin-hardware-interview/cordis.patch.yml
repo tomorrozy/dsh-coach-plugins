@@ -1,0 +1,12 @@
+# dsh-hardware-interview-teacher bundle patch: mounts the plugin into the host
+# composition of a dsh profile. The host half serves one JSON RPC route for the
+# browser half, registers the hardware-interview-teacher skill and the
+# hwinterview_* sync tools; the browser half registers the left sidebar entry
+# (sidebar.panellist) and its global page (main keyed slot).
+- insert:
+    - id: dsh-hardware-interview-teacher
+      name: 'dsh-hardware-interview-teacher'
+      config:
+        # 被扫描/出题的工程目录。留空时用 index.js 里的 DEFAULT_WORKSPACE。
+        # 也可以在面板顶部点「切换工程目录」临时改写（只存于本次进程）。
+        workspace: '%USERPROFILE%\Desktop\Taurus car'

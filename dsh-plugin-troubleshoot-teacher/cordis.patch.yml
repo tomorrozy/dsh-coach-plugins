@@ -1,0 +1,11 @@
+# dsh-troubleshoot-teacher bundle patch: mounts the plugin into the host
+# composition of a dsh profile. The host half serves one JSON RPC route for the
+# browser half, registers the troubleshoot-coach skill and the tscoach_* sync
+# tools; the browser half registers the left sidebar entry (sidebar.panellist)
+# and its global page (main keyed slot).
+- insert:
+    - id: dsh-troubleshoot-teacher
+      name: 'dsh-troubleshoot-teacher'
+      config:
+        # 出题所属工程目录（复盘写入 <workspace>/面试记录/ 与状态里展示）。
+        workspace: '%USERPROFILE%\Desktop\Taurus car'

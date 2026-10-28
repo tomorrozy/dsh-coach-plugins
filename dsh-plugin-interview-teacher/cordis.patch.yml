@@ -1,0 +1,7 @@
+# dsh-interview-teacher bundle patch: mounts the interview-teacher plugin into
+# the host composition of a dsh profile. The plugin serves one JSON RPC route
+# for the browser half and registers a global sidebar panel.
+- insert:
+    - id: dsh-interview-teacher
+      name: 'dsh-interview-teacher'
+      config: {}

@@ -1,0 +1,324 @@
+{
+  "generatedAt": "2026-10-24",
+  "projects": [
+    {
+      "id": "remote",
+      "name": "遥控工程（遥控/）",
+      "root": "遥控",
+      "modules": [
+        {
+          "module": "USART1 串口",
+          "file": "遥控/User/main.c",
+          "pins": "未配置（PA9/PA10 从未被初始化为串口引脚）",
+          "config": "未配置：全工程没有 uart_init/USART_Init/USART_BaudRate 调用，无波特率、无串口中断；遥控数据链路完全由 nRF24L01 无线承担",
+          "hardwarePoint": "H16",
+          "evidence": "main.c:98-107 初始化仅 SysTick/LED/Key/OLED/TIM4/MPU6050/NRF；stm32f10x_conf.h:48 只 include usart 头文件",
+          "risk": "若板上预留了 CH340/蓝牙串口，代码完全没驱动它；面试时若被问“串口调试怎么打”，只能说该工程没接"
+        },
+        {
+          "module": "系统时钟与总线时钟（RCC）",
+          "file": "遥控/Libraries/CMSIS/system_stm32f10x.c",
+          "pins": "—（内部时钟树，无引脚）",
+          "config": "HSE=8MHz，PLL×9=72MHz SYSCLK；HCLK=72MHz，PCLK2(APB2)=72MHz，PCLK1(APB1)=36MHz；APB1 分频≠1 故 TIM2/3/4 定时器时钟=72MHz",
+          "hardwarePoint": "H02",
+          "evidence": "system_stm32f10x.c:1022-1028 HPRE_DIV1/PPRE2_DIV1/PPRE1_DIV2；:1056 PLLSRC_HSE|PLLMULL9；main.c:99 SysTick_Init(72)",
+          "risk": "两个工程都假设 8MHz 晶振；若实物板是 12MHz 晶振（uvprojx 里 CLOCK(12000000) 只是 Keil 仿真参数），串口与 PWM 频率会整体偏 1.5 倍"
+        },
+        {
+          "module": "SysTick 微秒/毫秒延时",
+          "file": "遥控/Public/SysTick.c",
+          "pins": "—（内核 SysTick，无引脚）",
+          "config": "时钟源 HCLK/8=9MHz，fac_us=72/8=9，fac_ms=9000；轮询 COUNTFLAG 实现 delay_us/delay_ms；SysTick 中断未使能（stm32f10x_it.c 的 SysTick_Handler 为空）",
+          "hardwarePoint": "H19",
+          "evidence": "SysTick.c:12-14 SysTick_CLKSourceConfig(HCLK_Div8); fac_us=SYSCLK/8; fac_ms=fac_us*1000；stm32f10x_it.c:135-137 空处理",
+          "risk": "软件 I2C 的 10us 时序完全依赖这个 delay_us，若主频不是 72MHz 则 SCL 实际频率随之漂移"
+        },
+        {
+          "module": "软件 I2C + MPU6050（PB6/PB7）",
+          "file": "遥控/APP/MyI2C.c",
+          "pins": "PB6=SCL / PB7=SDA（GPIOB，非硬件 I2C1 外设，纯 GPIO 模拟）",
+          "config": "GPIO_Mode_Out_OD 开漏输出、GPIO_Speed_50MHz、初始化后拉高释放总线；每个电平翻转后 delay_us(10) → SCL 约 1/(2×10us)=50kHz；MPU6050 地址 0xD0（7 位 0x68，AD0=0）；SMPLRT_DIV=0x09→100Hz，CONFIG=0x06→DLPF 5Hz，GYRO ±2000°/s(0x18)，ACC ±16g(0x18)，PWR_MGMT_1=0x01 选 PLL",
+          "hardwarePoint": "H03/H14",
+          "evidence": "MyI2C.c:15-16 GPIO_WriteBit(GPIOB,Pin_6)+delay_us(10)；MyI2C.c:58-64 Out_OD/Pin_6|Pin_7/Speed_50MHz；MPU6050.c:7 #define MPU6050_ADDRESS 0xD0",
+          "risk": "开漏且代码未开内部上拉，模块必须自带 4.7k~10k 外部上拉；另外 MyI2C.c:61 注释写“PB10和PB11”，与实际 PB6/PB7 不符，需确认实物到底接哪组"
+        },
+        {
+          "module": "软件 I2C + OLED（PB8/PB9）",
+          "file": "遥控/APP/OLED.c",
+          "pins": "PB8=SCL / PB9=SDA（GPIOB，开漏模拟 I2C）",
+          "config": "GPIO_Mode_Out_OD、GPIO_Speed_50MHz、上电先空循环约 1e6 次等 OLED 供电稳定；从机地址 0x78（7 位 0x3C，AD0=0）；写命令控制字节 0x00、写数据 0x40；每帧整体刷 8 页×128 字节",
+          "hardwarePoint": "H08",
+          "evidence": "OLED.c:82 GPIO_WriteBit(GPIOB,GPIO_Pin_8)；:99 GPIO_Pin_9；:128-133 Out_OD/50MHz；:201 OLED_I2C_SendByte(0x78)",
+          "risk": "SCL/SDA 无任何软件延时，只靠 GPIO 翻转速度，SCL 实际频率未确认（受编译优化影响）；仍需外部上拉"
+        },
+        {
+          "module": "nRF24L01 软件 SPI（PA0–PA5）",
+          "file": "遥控/APP/nRF24L01_API.c",
+          "pins": "PA0=CSN / PA1=CE / PA2=SCK / PA3=MOSI（推挽输出）；PA4=MISO / PA5=IRQ（上拉输入 IPU）",
+          "config": "GPIO_Mode_Out_PP + GPIO_Speed_50MHz（CSN/CE/SCK/MOSI），MISO/IRQ 为 GPIO_Mode_IPU；软件模拟 SPI（8 位循环，SCK 上升沿采样），DelayUs/DelayMs 为空循环；RF 通道 40→2440MHz，2Mbps，0dBm，32 字节定长包，16 位 CRC，自动重发 500us×10",
+          "hardwarePoint": "H05",
+          "evidence": "nRF24L01_API.c:3-9 PAout(0..3)/PAin(4..5)；:159-185 GPIOA 时钟 + Out_PP/50MHz + Pin_4 IPU；:219 RF_CH=40",
+          "risk": "CE/CSN/SCK/MOSI 上电先置 1/0 再 DelayMs(100)，若模块供电慢可能初始化失败；PA4/PA5 用内部上拉（约 30–50k）驱动 nRF 输出可接受但偏弱"
+        },
+        {
+          "module": "TIM4 1ms 系统节拍中断",
+          "file": "遥控/Public/time4.c",
+          "pins": "—（TIM4 无外部引脚，仅内部计时）",
+          "config": "TIM4 时钟 72MHz，PSC=72-1，ARR=1000-1 → 中断频率 = 72MHz/(72×1000) = 1000Hz（1ms）；NVIC 抢占优先级 2 / 子优先级 3，TIM_IT_Update 使能；工程未调用 NVIC_PriorityGroupConfig（复位默认分组 0：4 位抢占 0 位子优先级）",
+          "hardwarePoint": "H19",
+          "evidence": "time4.c:16 RCC_APB1Periph_TIM4；:28-29 抢占2/子3；main.c:103 TIM4_Init(1000-1,72-1)；算式 72e6/(72×1000)=1kHz",
+          "risk": "未设优先级分组时子优先级 3 实际被忽略；该中断里还跑按键扫描 prekey()，1ms 中断负载偏高"
+        },
+        {
+          "module": "LED（PC13 / PA7）",
+          "file": "遥控/APP/led/led.c",
+          "pins": "PC13=LED0 / PA7=LED8（led.h 还定义了 PB0、PA1–PA6 共 9 个 LED 宏，但只有 PC13 与 PA7 真正初始化）",
+          "config": "GPIO_Mode_Out_PP、GPIO_Speed_50MHz；PC13 初始 SetBits 高电平（低电平点亮），PA7 初始 ResetBits 低电平；无限流电阻相关代码（限流靠硬件）",
+          "hardwarePoint": "H09",
+          "evidence": "led.c:23-27 GPIO_Pin_13 推挽 50MHz + GPIO_SetBits；:57-59 GPIO_Pin_8(GPIOA) 推挽 + ResetBits；led.h:45-53 PCout(13)/PAout(7)",
+          "risk": "PC13 属备份域引脚，手册限 3mA/2MHz，代码配 50MHz 推挽并直接驱动 LED，属典型超规格用法；led.h 的 PA1–PA5 宏与 nRF 引脚重叠，一旦有人写 LED3=!LED3 就会踢掉无线"
+        },
+        {
+          "module": "按键（PB12–PB15 / PA8）",
+          "file": "遥控/APP/key/key.c",
+          "pins": "KEY1=PB12 / KEY2=PB13 / KEY3=PB14 / KEY4=PB15 / KEY5=PA8",
+          "config": "全部 GPIO_Mode_IPU 上拉输入（按键另一端接地，低电平按下）；无外部中断，靠 TIM4 1ms 中断里 prekey() 扫描；长按阈值 presstime=500ms",
+          "hardwarePoint": "H09",
+          "evidence": "key.c:29-33 RCC_APB2Periph_GPIOB/GPIOA；:37-51 GPIO_Mode_IPU；key.h:8-26 Pin_12~15/PA8；key.h:60 presstime 500",
+          "risk": "5 个按键共用 B 口 12–15 与 PA8，内部上拉仅 30–50kΩ，若排线长易受干扰误触发；按键按下判定还要求其余 4 键为高，多键同按会失效"
+        },
+        {
+          "module": "DHT22 单总线温湿度（PA12）",
+          "file": "遥控/APP/dht22.c",
+          "pins": "PA12=DHT22_DAT（宏 DHT22_DAT_Pin=GPIO_Pin_12，端口 GPIOA）",
+          "config": "平时 GPIO_Mode_Out_PP 推挽输出高电平；读数据时动态切 GPIO_Mode_IPU 上拉输入；主机拉低 1ms 起始，靠 delay_us 测量 40/80us 高低电平判位；位带宽 1 字节数据+1 字节校验",
+          "hardwarePoint": "H18",
+          "evidence": "dht22.h:6-8 GPIO_Pin_12 / GPIOA；dht22.c:15-20 Out_PP + SetBits；:140-155 Mode 切换 Out_PP/IPU",
+          "risk": "main.c 从未调用 DHT22_Init，功能实际未启用；且 dht22.c:119 校验通过时执行 GPIO_SetBits(GPIOA,GPIO_Pin_1)，PA1 正是 nRF24L01 的 CE 脚，一旦启用 DHT22 会误触发无线发送/破坏收发"
+        },
+        {
+          "module": "电机 PWM（TB6612 驱动）",
+          "file": "遥控/User/main.c",
+          "pins": "未配置（工程无 TIM 比较输出通道、无电机方向 GPIO）",
+          "config": "未配置：全工程只有 TIM4 时基，没有 TIM_OCInit / TIM_SetCompare / PWM 输出引脚；本工程是遥控器端，电机在车上",
+          "hardwarePoint": "H06/H12",
+          "evidence": "time4.c:16-33 仅 TIM4 时基+更新中断；全工程 grep TIM_OC/SetCompare 0 命中",
+          "risk": "若被追问“遥控端如何限速”，要说明限速/死区在车载 FreeRTOS 工程里做，不在这份代码"
+        },
+        {
+          "module": "编码器（TIM3/TIM4 编码器接口）",
+          "file": "遥控/Public/time4.c",
+          "pins": "未配置（本工程 TIM3 未使用；TIM4 只做 1ms 定时，未配编码器模式）",
+          "config": "未配置：无 TIM_EncoderInterfaceConfig、无 AB 相上拉输入初始化；编码器只在车载 FreeRTOS 工程",
+          "hardwarePoint": "H13",
+          "evidence": "time4.c:16 RCC_APB1Periph_TIM4 后直接 TIM_TimeBaseInit；grep TIM_EncoderInterfaceConfig 0 命中",
+          "risk": "注意 TIM4 在两工程用途不同：遥控端是 1ms 时基，车载端是右轮编码器，不能直接互抄初始化"
+        }
+      ]
+    },
+    {
+      "id": "freertos",
+      "name": "FreeRTOS 小车工程（FreeRTOS小车/）",
+      "root": "FreeRTOS小车",
+      "modules": [
+        {
+          "module": "USART1 串口（调试/printf）",
+          "file": "FreeRTOS小车/SYSTEM/usart/usart.c",
+          "pins": "PA9=USART1_TX（GPIO_Mode_AF_PP）/ PA10=USART1_RX（GPIO_Mode_IN_FLOATING）",
+          "config": "uart_init(115200)：115200-8-N-1，无硬件流控，收发双工；使能 RXNE 接收中断；NVIC 抢占 3 / 子优先级 3（main 里先 NVIC_PriorityGroupConfig(GPIO_Group_4)→4 位抢占、0 位子优先级，子优先级实际无效）；fputc 重定向 printf 到 USART1->DR",
+          "hardwarePoint": "H10/H16",
+          "evidence": "usart.c:78-86 Pin_9 AF_PP / Pin_10 IN_FLOATING；:90-91 抢占3/子3；:97-105 115200 8N1 + RXNE 中断；main.c:143-145 Group_4 + uart_init(115200)",
+          "risk": "USART1 中断抢占级别 3 高于 configMAX_SYSCALL_INTERRUPT_PRIORITY(5)，若在中断里调 FreeRTOS API 会直接崩；printf 为阻塞轮询发送，任务里大量打印会拖慢 20ms 控制周期"
+        },
+        {
+          "module": "系统时钟与 NVIC 优先级分组",
+          "file": "FreeRTOS小车/USER/main.c",
+          "pins": "—（内部时钟树，无引脚）",
+          "config": "HSE=8MHz，PLL×9=72MHz；HCLK=72MHz、PCLK2=72MHz、PCLK1=36MHz（TIM2/3/4 定时器时钟 72MHz）；main 第一句 NVIC_PriorityGroupConfig(NVIC_PriorityGroup_4)，全工程按 4 位抢占/0 位子优先级规划",
+          "hardwarePoint": "H02",
+          "evidence": "main.c:143 NVIC_PriorityGroupConfig(NVIC_PriorityGroup_4)；system_stm32f10x.c:1028 PPRE1_DIV2；:1056 PLLSRC_HSE|PLLMULL9",
+          "risk": "分组 4 与 usart.c 里写的“子优先级 3”设计不一致，读代码的人容易误判谁先响应"
+        },
+        {
+          "module": "软件 I2C + OLED（PB8/PB9，与遥控端 SCL/SDA 相反）",
+          "file": "FreeRTOS小车/HARDWARE/LED/OLED.c",
+          "pins": "PB9=SCL / PB8=SDA（注意：遥控工程是 PB8=SCL、PB9=SDA，两工程相反）",
+          "config": "GPIO_Mode_Out_OD、GPIO_Speed_50MHz、上电空循环等待供电稳定；从机地址 0x78（7 位 0x3C）；写命令 0x00 / 写数据 0x40；整体刷新 8 页×128 字节",
+          "hardwarePoint": "H08",
+          "evidence": "OLED.c:82 GPIO_WriteBit(GPIOB,GPIO_Pin_9)（SCL）；:99 GPIO_Pin_8（SDA）；:128-133 Out_OD/50MHz；:201 地址 0x78",
+          "risk": "若把遥控端与车载端的 OLED 模块线序直接对插，SCL/SDA 互换会拉死总线（两工程同名驱动、接法不同）"
+        },
+        {
+          "module": "nRF24L01 软件 SPI（PA2–PA5 + PB0/PB1）",
+          "file": "FreeRTOS小车/HARDWARE/LED/nRF24L01_API.c",
+          "pins": "PA2=CSN / PA3=CE / PA4=SCK / PA5=MOSI（推挽输出）；PB0=MISO / PB1=IRQ（IPU 上拉输入）",
+          "config": "GPIOA+GPIOB 时钟都使能；软件模拟 SPI，SCK 上升沿采样；RF 通道 40→2440MHz，2Mbps，0dBm，32 字节包，16 位 CRC，自动重发；接收端多通道：CH0 收 TX_ADDR1(0x11×5)、CH1 收 TX_ADDR2(0x22×5)，ACK 地址 0xAA×5",
+          "hardwarePoint": "H05",
+          "evidence": "nRF24L01_API.c:3-8 PAout(2..5)/PBin(0..1)；:147 RCC_APB2Periph_GPIOA|GPIOB；:172-178 Pin_0/Pin_1 IPU；:243 RF_CH=40",
+          "risk": "PA5 同时被 led.c 定义为 LED1（推挽输出），两处都初始化同一根脚；MISO(PB0)/IRQ(PB1) 无外部上拉，仅靠内部弱上拉"
+        },
+        {
+          "module": "TIM2 两路电机 PWM（PA0/PA1）",
+          "file": "FreeRTOS小车/HARDWARE/LED/PWM.c",
+          "pins": "PA0=TIM2_CH1（左轮 PWMA）/ PA1=TIM2_CH2（右轮 PWMB），GPIO_Mode_AF_PP",
+          "config": "TIM2 时钟 72MHz（APB1=36MHz，分频≠1 时定时器时钟×2）；PSC=36-1，ARR=100-1 → PWM 频率 = 72MHz/(36×100) = 20kHz；占空比 = CCR/(ARR+1) = CCR/100，CCR 取 0–100；PWM1 模式、高电平有效、CCR 初值 0",
+          "hardwarePoint": "H12",
+          "evidence": "PWM.c:17-20 AF_PP/Pin_0|Pin_1/50MHz；:30-31 Period=100-1、Prescaler=36-1；算式 72e6/((35+1)×(99+1))=20kHz",
+          "risk": "20kHz 开关频率对 TB6612 没问题，但若换成低速 MOS 直驱需重算；占空比只有 100 级，低速时分辨率偏粗（约 1%）"
+        },
+        {
+          "module": "电机方向 GPIO（TB6612 AIN/BIN）",
+          "file": "FreeRTOS小车/HARDWARE/LED/Motor.c",
+          "pins": "PB12=左 AIN1 / PB13=左 AIN2 / PB14=右 BIN1 / PB15=右 BIN2（全部推挽输出，50MHz）",
+          "config": "Motor_SetPWM(1,±100)：PB12=1/PB13=0 正转，反之为反转；右轮 PB14=0/PB15=1 正转；方向脚固定电平，速度由 PA0/PA1 的 PWM 给到 TB6612 的 PWMA/PWMB",
+          "hardwarePoint": "H06",
+          "evidence": "Motor.c:16 GPIO_Pin_12|13|14|15 推挽 50MHz；:35-36 PB12 高/PB13 低；:50-51 PB14 低/PB15 高",
+          "risk": "代码里完全没有 STBY（待机）脚控制，TB6612 的 STBY 必须硬件上拉到 VCC，否则两轮永远不转；也没有刹车/滑行模式切换"
+        },
+        {
+          "module": "TIM3 左轮编码器（PA6/PA7）",
+          "file": "FreeRTOS小车/HARDWARE/LED/Encoder.c",
+          "pins": "PA6=TIM3_CH1(A 相) / PA7=TIM3_CH2(B 相)，GPIO_Mode_IPU 上拉输入",
+          "config": "TIM3 时钟 72MHz，PSC=1-1（不分频）、ARR=65536-1（16 位满量程）；TIM_EncoderMode_TI12（AB 双相双边沿计数），两通道都 Rising（不反相）；IC 滤波 0xF；Encoder_Get(1) 读 TIM3->CNT 后清零",
+          "hardwarePoint": "H13/H07",
+          "evidence": "Encoder.c:18-21 IPU/Pin_6|Pin_7；:27-28 Period=65536-1、Prescaler=1-1；:45 TI12/Rising/Rising；:105-106 TIM_GetCounter(TIM3)+清零",
+          "risk": "代码用内部上拉等编码器输出，若无外部上拉且编码器为开漏，长线易丢脉冲；编码器每转 52 计数（13 线×4）是软件里的假设，需核对实物"
+        },
+        {
+          "module": "TIM4 右轮编码器（PB6/PB7）",
+          "file": "FreeRTOS小车/HARDWARE/LED/Encoder.c",
+          "pins": "PB6=TIM4_CH1(A 相) / PB7=TIM4_CH2(B 相)，GPIO_Mode_IPU 上拉输入",
+          "config": "TIM4 时钟 72MHz，PSC=1-1、ARR=65536-1；TIM_EncoderMode_TI12；CH1 极性 Rising、CH2 极性 Falling（右轮方向取反，用于两轮同向前进）；Encoder_Get(2) 读 TIM4->CNT 后清零",
+          "hardwarePoint": "H13/H07",
+          "evidence": "Encoder.c:56 RCC_APB1Periph_TIM4；:60-63 IPU/PB6|PB7；:85 TIM_EncoderMode_TI12/Rising/Falling；:111-112 读 TIM4 并清零",
+          "risk": "TIM4 在遥控工程是 1ms 时基、在本工程是编码器，两个工程同一定时器用法完全不同；AB 相反相参数若写错，右轮 PI 会正反馈飞车"
+        },
+        {
+          "module": "LED（PC13 / PA5）",
+          "file": "FreeRTOS小车/HARDWARE/LED/led.c",
+          "pins": "PC13=LED0 / PA5=LED1（注释写 PB5/PE5，是正点原子模板残留的错误注释）",
+          "config": "GPIOC+GPIOA 时钟使能；两脚均 GPIO_Mode_Out_PP、GPIO_Speed_50MHz；初始化后都 SetBits 输出高（按低电平点亮设计，上电灭）；代码无 LED 限流电阻信息",
+          "hardwarePoint": "H09",
+          "evidence": "led.c:23 RCC_APB2Periph_GPIOC|GPIOA；:25-29 Pin_13 推挽 50MHz SetBits；:31-35 Pin_5 推挽 50MHz SetBits",
+          "risk": "PA5 与 nRF24L01 的 MOSI 复用，LED_Init 在 NRF 初始化之前把 PA5 拉高，而 NRF 初始化随后把 PA5 当 MOSI；任何 LED1 操作都会破坏无线数据；PC13 同样超 3mA/2MHz 规格"
+        },
+        {
+          "module": "FreeRTOS 硬件相关配置（SysTick / 节拍 / 中断优先级）",
+          "file": "FreeRTOS小车/FreeRTOS/include/FreeRTOSConfig.h",
+          "pins": "—（内核 SysTick，无外部引脚）",
+          "config": "SysTick 时钟源 HCLK=72MHz（不是 /8），fac_us=72；configTICK_RATE_HZ=1000（1ms 节拍），reload=72MHz/1000=72000；configPRIO_BITS=4，configKERNEL_INTERRUPT_PRIORITY=15<<4=0xF0，configMAX_SYSCALL_INTERRUPT_PRIORITY=5<<4=0x50；configUSE_TICKLESS_IDLE=0；PendSV/SVC 映射到 xPortPendSVHandler/vPortSVCHandler",
+          "hardwarePoint": "H19",
+          "evidence": "FreeRTOSConfig.h:96-97 configCPU_CLOCK_HZ=SystemCoreClock、configTICK_RATE_HZ=1000；:172-178 PRIO_BITS=4/KERNEL=0xF0/MAX_SYSCALL=0x50；delay.c:47-56 HCLK + LOAD=SystemCoreClock/1000",
+          "risk": "configASSERT 通过 printf 输出，assert 里再触发串口阻塞可能把调度器锁死；所有可调 FreeRTOS API 的中断优先级必须 ≥5（数值），USART1 的 3 不满足"
+        },
+        {
+          "module": "按键",
+          "file": "FreeRTOS小车/USER/main.c",
+          "pins": "未配置（本工程没有任何按键 GPIO 初始化；PB12–PB15 已被电机方向占用）",
+          "config": "未配置：main 初始化序列只有 NVIC 分组/delay/uart/OLED/LED/Motor/Encoder/NRF，工程里不存在 key.c，也没有 IPU 按键输入",
+          "hardwarePoint": "H09",
+          "evidence": "main.c:141-151 NVIC_PriorityGroupConfig→delay_init→uart_init→OLED_Init→LED_Init→Motor_Init→Encoder_Init→NRF24L01_Init，无 Key_Init",
+          "risk": "若实物车上有按键（启动/急停），代码完全没有读取路径，必须靠硬件或外部指令"
+        },
+        {
+          "module": "MPU6050 / I2C 姿态传感器",
+          "file": "FreeRTOS小车/USER/main.c",
+          "pins": "未配置（本工程无 MPU6050；I2C 只用于 OLED 的 PB8/PB9 软件模拟）",
+          "config": "未配置：include 列表无 MPU6050.h，工程无 MPU6050.c；pitch/roll 由 nRF24L01 从遥控端接收（Protocol_Unpack 解析 0xA5 帧）",
+          "hardwarePoint": "H03/H14",
+          "evidence": "main.c:1-14 include 仅 sys/delay/usart/led/FreeRTOS/task/semphr/nRF/oled/Motor/Encoder；main.c:190-203 姿态来自 NRF24L01_RxPacket_Multi",
+          "risk": "车端姿态完全依赖无线链路，丢包即失去姿态；面试若问“车自己会不会算姿态”，答案是不会"
+        }
+      ]
+    }
+  ],
+  "mismatches": [
+    {
+      "item": "USART 有无",
+      "detail": "遥控工程完全没初始化串口（纯 nRF24L01 遥控）；FreeRTOS 工程有 USART1 PA9/PA10 @115200 8N1 + RXNE 中断，用于 printf 调试。两工程调试手段不同。"
+    },
+    {
+      "item": "OLED 软件 I2C 引脚（SCL/SDA 对调）",
+      "detail": "遥控工程：PB8=SCL、PB9=SDA（OLED.c:82/99）；FreeRTOS 工程：PB9=SCL、PB8=SDA（OLED.c:82/99）。地址都是 0x78，模块不可直接互换线序。"
+    },
+    {
+      "item": "nRF24L01 引脚映射",
+      "detail": "遥控：PA0=CSN、PA1=CE、PA2=SCK、PA3=MOSI、PA4=MISO、PA5=IRQ；FreeRTOS：PA2=CSN、PA3=CE、PA4=SCK、PA5=MOSI、PB0=MISO、PB1=IRQ。同一块 nRF 模块换工程必须改线。"
+    },
+    {
+      "item": "TIM4 用途冲突",
+      "detail": "遥控工程 TIM4=1ms 更新中断时基（PSC=71, ARR=999）；FreeRTOS 工程 TIM4=右轮编码器接口（PSC=0, ARR=65535, TI12）。同名外设两种完全不同的硬件配置。"
+    },
+    {
+      "item": "电机/编码器仅车端具备",
+      "detail": "FreeRTOS 端：TIM2_CH1/CH2→PA0/PA1 PWM、PB12–PB15 方向、TIM3(PA6/PA7)+TIM4(PB6/PB7) 编码器；遥控端这三类全部未配置。"
+    },
+    {
+      "item": "MPU6050 仅遥控端具备",
+      "detail": "遥控端 PB6/PB7 软 I2C + MPU6050(0xD0)；车端没有 MPU6050，姿态靠无线帧传输。"
+    },
+    {
+      "item": "MCU 型号声明不一致",
+      "detail": "两个 uvprojx 的 Device 都是 STM32F103C8（IRAM 0x5000=20KB、IROM 0x10000=64KB），但遥控用 startup_stm32f10x_md.s，FreeRTOS 用 startup_stm32f10x_hd.s，且 DebugConfig 是 STM32F103ZE —— 实际板子型号需实物确认。"
+    },
+    {
+      "item": "初始化顺序差异",
+      "detail": "遥控：SysTick→LED→Key→OLED→TIM4→MPU6050→NRF24L01；FreeRTOS：NVIC 分组→delay→uart→OLED→LED→Motor→Encoder→NRF24L01→RX 多通道→PID→建任务。FreeRTOS 中 LED_Init 先于 NRF24L01_Init，使 PA5 存在先被当 LED 再被当 MOSI 的时序问题。"
+    }
+  ],
+  "hardwareRisks": [
+    {
+      "id": "R1",
+      "module": "LED（PC13）",
+      "risk": "两工程都把 PC13（备份域 RTC 引脚）配成 GPIO_Mode_Out_PP + GPIO_Speed_50MHz 直接驱动 LED；手册限定 PC13 最大 3mA、2MHz，驱动能力不足且高速翻转会抬高 EMI/纹波。",
+      "check": "万用表串在 PC13 与 LED 限流电阻间测电流（应 <3mA）；示波器看 PC13 边沿是否有过冲/振铃；确认 LED 串联电阻 ≥1kΩ。"
+    },
+    {
+      "id": "R2",
+      "module": "FreeRTOS nRF24L01 / LED 引脚复用",
+      "risk": "FreeRTOS 工程 PA5 同时是 nRF24L01 的 MOSI（nRF24L01_API.c:6,167）和 LED1（led.h:17 / led.c:31-35）；LED_Init 在 NRF24L01_Init 之前把 PA5 拉高，任何 LED1 操作都会破坏 SPI 数据甚至误发寄存器命令。",
+      "check": "示波器双通道同时看 PA5（MOSI）与 PB0（MISO），在 OLED 刷新/无线收发时观察是否出现非 SPI 时段的跳变；查 PCB 上 PA5 到底接 LED 还是接 nRF MOSI。"
+    },
+    {
+      "id": "R3",
+      "module": "遥控 DHT22 与 nRF CE 冲突",
+      "risk": "dht22.c:119 在温湿度校验通过时执行 GPIO_SetBits(GPIOA, GPIO_Pin_1)，而 PA1 正是 nRF24L01 的 CE（nRF24L01_API.c:5）。一旦启用 DHT22，会随机拉高 CE，导致无线进入发送态/丢包。",
+      "check": "在 DHT22_ReadDate 调用前后用示波器看 PA1 电平；或直接确认 main 是否调用 DHT22_Init（当前未调用）。"
+    },
+    {
+      "id": "R4",
+      "module": "软件 I2C（MPU6050 / OLED）",
+      "risk": "两工程所有软 I2C 引脚都是 GPIO_Mode_Out_OD 开漏且代码未开内部上拉：MPU6050 PB6/PB7、遥控 OLED PB8/PB9、车端 OLED PB8/PB9。若模块板无 4.7k~10k 外部上拉，SCL/SDA 无法回高，读数全部 NACK/花屏。",
+      "check": "断电测 SCL–3.3V、SDA–3.3V 电阻（应为 4.7k~10k，而不是开路）；上电示波器看空闲时 SCL/SDA 是否稳定在 3.3V。"
+    },
+    {
+      "id": "R5",
+      "module": "车端 TB6612 与电机供电",
+      "risk": "Motor.c 只驱动 PB12–PB15 方向 + PA0/PA1 PWM，代码里没有任何 STBY 控制；TB6612 的 STBY 若悬空则芯片待机、电机不转；同时代码未涉及 VM 电机电源与 VCC 逻辑电源的分离。",
+      "check": "万用表测 STBY 对 VCC 电压（应为 3.3V）；测 VM 与 VCC 是否分别供电；示波器看 PA0/PA1 在 100% 占空比时是否为干净 3.3V 方波（20kHz）。"
+    },
+    {
+      "id": "R6",
+      "module": "编码器输入（TIM3/TIM4）",
+      "risk": "车端编码器 AB 相仅用内部上拉（IPU，约 30–50kΩ）；若编码器是开漏输出或线缆较长，边沿变缓导致丢脉冲/方向误判，速度环直接震荡。右轮还把 CH2 极性设为 Falling，配错就会正反馈飞车。",
+      "check": "示波器看 PA6/PA7、PB6/PB7 的 AB 相波形（应有明显 90° 相位差、无振铃）；手动正转两轮，串口打印 Encoder_Get 的符号应左右一致。"
+    },
+    {
+      "id": "R7",
+      "module": "遥控 TIM4 中断与 NVIC 分组",
+      "risk": "遥控工程从未调用 NVIC_PriorityGroupConfig，复位默认分组 0（4 位抢占/0 位子优先级），TIM4 里设置的子优先级 3 被忽略；1ms 中断中还要跑 prekey()，中断服务时间偏长。",
+      "check": "在 TIM4_IRQHandler 入口/出口翻转一个空闲 IO，示波器测 ISR 执行时间（应远小于 1ms，建议 <100us）；确认是否真的需要 1ms 按键扫描。"
+    },
+    {
+      "id": "R8",
+      "module": "时钟源假设（8MHz 晶振）",
+      "risk": "两工程都以 HSE=8MHz、PLL×9=72MHz 计算所有时序（SysTick、TIM4 1ms、TIM2 20kHz PWM、115200 波特率）。若实物板晶振不是 8MHz，串口乱码、PWM 频率与编码器换算全部偏移。",
+      "check": "示波器/频率计测 PA8 的 MCO 或直接看晶振引脚频率；串口用 115200 收数据是否乱码；示波器测 PA0 PWM 频率应为 20kHz±1%。"
+    }
+  ],
+  "summary": {
+    "filesInspected": 43,
+    "modules": 24,
+    "notes": "逐文件读了遥控工程 12 个自写模块 + main + 时钟/中断文件，和 FreeRTOS 工程 8 个 HARDWARE 模块 + main + usart/delay + FreeRTOSConfig；库文件只用于核对时钟树（system_stm32f10x.c:1022-1056）与启动文件密度。两工程均缺少电机续流/去耦/上拉等硬件信息（代码层面不可见），已列入 md 的“实物必须有”清单。注意：遥控/APP/MPU6050.c 第 92-110 行有一段重复且语法不完整的函数体（残留代码块），FreeRTOS/USER/main.c 第 294 行混入了一个 Markdown 代码栅栏“```”，两者都说明当前源码不是最终可编译版本，硬件结论按代码意图提取。"
+  }
+}

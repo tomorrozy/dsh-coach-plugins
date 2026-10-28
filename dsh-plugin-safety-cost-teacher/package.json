@@ -1,0 +1,59 @@
+{
+  "name": "dsh-safety-cost-teacher",
+  "version": "0.1.0",
+  "description": "安全、可靠性与成本老师：DSH 左侧栏入口「安全可靠评审」+ 逐题评审训练台（S01–S12：电池供电/降压/堵转/电源跌落/驱动散热/无线天线/接插件/线束/EMC/电池管理/成本备件/整机维护），训练“风险点→失效后果→保护依据→验证判据→成本备件→下一层防线”，并注册 safety-cost-coach 技能与 screview_* 状态同步工具。",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "data",
+    "skill",
+    "locale",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node scripts/selftest.mjs",
+    "selftest": "node scripts/selftest.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-locale"
+      ],
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*"
+  },
+  "peerDependenciesMeta": {
+    "*": {
+      "optional": true
+    }
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "safety",
+    "reliability",
+    "cost",
+    "hardware-review",
+    "robomaster"
+  ],
+  "license": "MIT"
+}

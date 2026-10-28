@@ -1,0 +1,60 @@
+{
+  "name": "dsh-test-teacher",
+  "version": "0.1.0",
+  "description": "测试与验证老师：DSH 左侧栏入口 + 逐题测试验证台（T01–T12 测试对象），训练“测什么指标 / 怎么构造条件 / 正常异常判据 / 用什么工具 / 怎么记录与回归”，并注册 test-verify-coach 技能与 testcoach_* 状态同步工具。",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "data",
+    "skill",
+    "locale",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node scripts/selftest.mjs && node scripts/client-selftest.mjs",
+    "test:host": "node scripts/selftest.mjs",
+    "test:client": "node scripts/client-selftest.mjs",
+    "verify:ui": "node scripts/verify-ui.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-locale"
+      ],
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*"
+  },
+  "peerDependenciesMeta": {
+    "*": {
+      "optional": true
+    }
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "test",
+    "verification",
+    "embedded",
+    "rc-car"
+  ],
+  "license": "MIT"
+}
